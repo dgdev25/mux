@@ -17,7 +17,7 @@ router:
 
 local_runtime:
   health_url: "http://127.0.0.1:18473/health"
-  restart_cmd: "/media/lyle/datadisk/models/start.sh restart"
+  restart_cmd: ""
   health_retries: 2
   health_retry_delay_sec: 2
 

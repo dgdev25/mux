@@ -1,7 +1,9 @@
 import json
-from pathlib import Path
 
-METRICS_PATH = Path('/media/lyle/datadisk/dev/mux/logs/mux_metrics.json')
+from mux.config import project_root
+
+
+METRICS_PATH = project_root() / "logs" / "mux_metrics.json"
 
 
 def _load() -> dict:

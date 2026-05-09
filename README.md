@@ -211,16 +211,16 @@ Primary config file: `config/mux.yaml`
 
 ### Important note about defaults
 
-Current defaults include a machine-specific `local_runtime.restart_cmd` path in `config/mux.yaml`.
-You should change that value for your environment.
+`local_runtime.restart_cmd` is intentionally blank by default.
+Set it to your own restart command for the local model service.
 
 ## Ledger and observability
 
 Run records are appended to a JSONL ledger.
 
-Current ledger file path in code:
+Current default ledger file path:
 
-- `/media/lyle/datadisk/dev/mux/logs/run_ledger.jsonl`
+- `<repo-root>/logs/run_ledger.jsonl`
 
 Ledger supports:
 

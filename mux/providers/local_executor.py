@@ -3,11 +3,12 @@ import re
 import subprocess
 from pathlib import Path
 
+from mux.config import project_root
 from mux.providers.local_provider import chat_local
 from mux.types import ModelResult
 
 
-RAW_LOG = Path('/media/lyle/datadisk/dev/mux/logs/local_executor_raw.log')
+RAW_LOG = project_root() / "logs" / "local_executor_raw.log"
 
 
 def _log_raw(text: str) -> None:

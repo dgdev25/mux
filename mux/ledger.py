@@ -7,8 +7,9 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
 
+from mux.config import project_root
 
-LEDGER_PATH = Path("/media/lyle/datadisk/dev/mux/logs/run_ledger.jsonl")
+LEDGER_PATH = project_root() / "logs" / "run_ledger.jsonl"
 
 
 def _now_iso() -> str:
