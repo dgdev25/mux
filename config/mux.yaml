@@ -1,0 +1,59 @@
+router:
+  max_local_retries: 1
+  local_confidence_threshold: 0.6
+  escalate_on:
+    - low_confidence
+    - verification_failures
+    - high_complexity
+  complexity_keywords:
+    - multi-file
+    - architecture
+    - migration
+    - security
+    - performance
+    - ambiguous
+    - refactor
+    - concurrency
+
+local_runtime:
+  health_url: "http://127.0.0.1:18473/health"
+  restart_cmd: "/media/lyle/datadisk/models/start.sh restart"
+  health_retries: 2
+  health_retry_delay_sec: 2
+
+verification:
+  enabled: true
+  strict: false
+  commands: []
+
+providers:
+  local:
+    base_url: "http://127.0.0.1:18473/v1"
+    model: "Qwen3.6-35B-A3B-IQ3_K_R4"
+    api_key_env: "LOCAL_OPENAI_API_KEY"
+    temperature: 0.2
+    max_tokens: 1200
+
+  sota_cli:
+    preferred_order:
+      - codex
+      - claude
+      - gemini
+    executor_timeout_sec: 900
+    retry_if_no_change: 1
+    tools:
+      codex:
+        binary: "codex"
+        advisory_args: ["exec", "--skip-git-repo-check", "--json"]
+        exec_args: ["exec", "--skip-git-repo-check", "--dangerously-bypass-approvals-and-sandbox", "-C", "{workdir}"]
+        prompt_via: "arg"
+      claude:
+        binary: "claude"
+        advisory_args: ["-p"]
+        exec_args: ["-p", "--dangerously-skip-permissions"]
+        prompt_via: "arg"
+      gemini:
+        binary: "gemini"
+        advisory_args: ["-p"]
+        exec_args: ["-p"]
+        prompt_via: "arg"

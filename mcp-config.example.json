@@ -1,0 +1,9 @@
+{
+  "mcpServers": {
+    "mux": {
+      "command": "/media/lyle/datadisk/dev/mux/.venv/bin/python",
+      "args": ["-m", "mux.mcp_server"],
+      "cwd": "/media/lyle/datadisk/dev/mux"
+    }
+  }
+}
