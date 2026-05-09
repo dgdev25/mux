@@ -4,11 +4,12 @@ Hybrid coding router: local model first, CLI SOTA handoff when risk is high.
 
 ## Quick start
 ```bash
-cd /media/lyle/datadisk/dev/mux
+git clone https://github.com/dgdev25/mux.git
+cd mux
 python3 -m venv .venv
 . .venv/bin/activate
 pip install -r requirements.txt
-python -m mux.cli run --task "Refactor auth middleware and keep tests passing"
+python3 -m mux.cli run --task "Refactor auth middleware and keep tests passing"
 ```
 
 ## Providers
@@ -18,14 +19,12 @@ python -m mux.cli run --task "Refactor auth middleware and keep tests passing"
 
 ## Robust local runtime
 - `mux` preflights local health before each run.
-- If unhealthy, it runs `/media/lyle/datadisk/models/start.sh restart` and retries health.
-- `/media/lyle/datadisk/models/start.sh` auto-fallbacks `--n-cpu-moe` and context when VRAM is tight.
+- If unhealthy, it runs the configured restart command (`local_runtime.restart_cmd` in `config/mux.yaml`) and retries health.
+- Keep `local_runtime.health_url` and `local_runtime.restart_cmd` aligned with your local model service.
 
 ## Optional watchdog (recommended)
-Install user systemd units/timer:
-```bash
-/media/lyle/datadisk/models/systemd/install-user-services.sh
-```
+Install user systemd units/timer using your local service scripts (outside this repo), then point `local_runtime.restart_cmd` to that managed service restart path.
+
 This enables:
 - `mux-llm.service` for lifecycle management
 - `mux-llm-healthcheck.timer` for periodic health check + auto-restart
@@ -44,9 +43,9 @@ This enables:
 ## MCP server
 Run as MCP stdio server:
 ```bash
-cd /media/lyle/datadisk/dev/mux
+cd mux
 . .venv/bin/activate
-python -m mux.mcp_server
+python3 -m mux.mcp_server
 ```
 
 Example MCP config is in `mcp-config.example.json`.
