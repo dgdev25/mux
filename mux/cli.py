@@ -19,6 +19,7 @@ def main() -> None:
         print(f"route: {out['route']}")
         print(f"model: {out['result'].model}")
         print(f"reason: {out['reason'] or 'n/a'}")
+        print(f"run_id: {out.get('run_id', 'n/a')}")
         print(f"retries: {out['retries']}")
         print(f"verify: {'pass' if out['verify'].ok else 'fail'} ({out['verify'].summary})")
         print("output:")

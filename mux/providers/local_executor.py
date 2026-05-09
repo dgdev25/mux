@@ -76,6 +76,35 @@ def _extract_json_blob(text: str) -> dict | None:
         return None
 
 
+def _validate_payload_schema(payload: dict) -> tuple[bool, str]:
+    files = payload.get("files")
+    if not isinstance(files, list):
+        return False, "files_not_list"
+    for idx, obj in enumerate(files):
+        if not isinstance(obj, dict):
+            return False, f"file_{idx}_not_object"
+        path = obj.get("path")
+        content = obj.get("content")
+        if not isinstance(path, str) or not path.strip():
+            return False, f"file_{idx}_invalid_path"
+        if not isinstance(content, str):
+            return False, f"file_{idx}_invalid_content"
+        p = Path(path.strip())
+        if p.is_absolute():
+            return False, f"file_{idx}_absolute_path_disallowed"
+        if ".." in p.parts:
+            return False, f"file_{idx}_path_traversal_disallowed"
+
+    commands = payload.get("commands", [])
+    if not isinstance(commands, list) or not all(isinstance(c, str) for c in commands):
+        return False, "commands_invalid"
+
+    summary = payload.get("summary", "")
+    if summary is not None and not isinstance(summary, str):
+        return False, "summary_invalid"
+    return True, "ok"
+
+
 def _snapshot(root: Path) -> set[str]:
     if not root.exists():
         return set()
@@ -114,15 +143,15 @@ def _apply_files(workdir: Path, files: list[dict]) -> list[str]:
 def _parse_files_from_output(output: str) -> tuple[list[dict], list[str], str, str]:
     payload = _extract_json_blob(output)
     if payload and isinstance(payload, dict):
+        valid, reason = _validate_payload_schema(payload)
+        if not valid:
+            return [], [], "", f"invalid_schema:{reason}"
         files = payload.get("files", []) if isinstance(payload.get("files", []), list) else []
         commands = payload.get("commands", []) if isinstance(payload.get("commands", []), list) else []
         summary = str(payload.get("summary", "implemented"))
         return files, commands, summary, "json"
 
-    files = _extract_markdown_files(output)
-    if files:
-        return files, [], "implemented_from_markdown_blocks", "markdown"
-
+    # Strict mode: do not materialize from markdown/prose responses.
     return [], [], "", "none"
 
 

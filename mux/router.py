@@ -1,5 +1,6 @@
 import re
 from mux.config import load_config
+from mux.ledger import append_run
 from mux.local_runtime import ensure_local_runtime
 from mux.metrics import increment, ratio_local_impl
 from mux.policies.escalation import should_escalate
@@ -31,6 +32,7 @@ def _run_persistence_workflow(task: str, cfg: dict) -> dict:
                 "result": run_local_executor(task, cfg),
                 "verify": verify("", cfg),
                 "reason": f"local_runtime_unavailable:{local_status}",
+                "runtime_status": local_status,
                 "retries": 0,
             }
     wcfg = cfg.get("workflow", {})
@@ -64,6 +66,7 @@ def _run_persistence_workflow(task: str, cfg: dict) -> dict:
                     "result": patched,
                     "verify": v,
                     "reason": "local_impl_plus_sota_review",
+                    "runtime_status": local_status,
                     "retries": 0,
                     "local_impl_ratio": ratio_local_impl(stats),
                 }
@@ -73,6 +76,7 @@ def _run_persistence_workflow(task: str, cfg: dict) -> dict:
             "result": local,
             "verify": v_local,
             "reason": "local_impl",
+            "runtime_status": local_status,
             "retries": 0,
             "local_impl_ratio": ratio_local_impl(stats),
         }
@@ -90,6 +94,7 @@ def _run_persistence_workflow(task: str, cfg: dict) -> dict:
                 "result": sota_exec,
                 "verify": v,
                 "reason": reason,
+                "runtime_status": local_status,
                 "retries": 0,
                 "local_impl_ratio": ratio_local_impl(stats),
             }
@@ -99,15 +104,20 @@ def _run_persistence_workflow(task: str, cfg: dict) -> dict:
         "result": local,
         "verify": verify("", cfg),
         "reason": "local_executor_failed_and_no_fallback",
+        "runtime_status": local_status,
         "retries": 0,
     }
 
 
 def run(task: str) -> dict:
     cfg = load_config()
+    runtime_status = "not_checked"
 
     if _requires_persistence(task):
-        return _run_persistence_workflow(task, cfg)
+        out = _run_persistence_workflow(task, cfg)
+        run_id = append_run(task=task, out=out, runtime_status=out.get("runtime_status", "persistence_flow"))
+        out["run_id"] = run_id
+        return out
 
     rcfg = cfg["router"]
     max_retries = int(rcfg.get("max_local_retries", 2))
@@ -115,6 +125,7 @@ def run(task: str) -> dict:
     min_conf = float(rcfg.get("local_confidence_threshold", 0.72))
 
     local_ok, local_status = ensure_local_runtime(cfg)
+    runtime_status = local_status
 
     retries = 0
     if local_ok:
@@ -137,47 +148,62 @@ def run(task: str) -> dict:
         )
 
         if not escalate:
-            return {
+            out = {
                 "route": "local",
                 "result": local,
                 "verify": v,
                 "reason": "",
                 "retries": retries,
             }
+            run_id = append_run(task=task, out=out, runtime_status=runtime_status)
+            out["run_id"] = run_id
+            return out
 
         sota = run_sota(task=task, context=f"local={local.output}\nverify={v.summary}\nreason={reason}", cfg=cfg)
         if sota.output.startswith("SOTA_PROVIDER_ERROR"):
-            return {
+            out = {
                 "route": "local",
                 "result": local,
                 "verify": v,
                 "reason": f"{reason}; sota_unavailable",
                 "retries": retries,
             }
+            run_id = append_run(task=task, out=out, runtime_status=runtime_status)
+            out["run_id"] = run_id
+            return out
 
         v2 = verify(sota.output, cfg)
-        return {
+        out = {
             "route": "sota",
             "result": sota,
             "verify": v2,
             "reason": reason,
             "retries": retries,
         }
+        run_id = append_run(task=task, out=out, runtime_status=runtime_status)
+        out["run_id"] = run_id
+        return out
 
     sota = run_sota(task=task, context=f"local_runtime={local_status}", cfg=cfg)
     if sota.output.startswith("SOTA_PROVIDER_ERROR"):
-        return {
+        out = {
             "route": "none",
             "result": sota,
             "verify": verify("", cfg),
             "reason": f"local_down_and_sota_unavailable:{local_status}",
             "retries": retries,
         }
+        run_id = append_run(task=task, out=out, runtime_status=runtime_status)
+        out["run_id"] = run_id
+        return out
 
-    return {
+    out = {
         "route": "sota",
         "result": sota,
         "verify": verify(sota.output, cfg),
         "reason": f"local_unavailable:{local_status}",
         "retries": retries,
     }
+    run_id = append_run(task=task, out=out, runtime_status=runtime_status)
+    out["run_id"] = run_id
+    return out

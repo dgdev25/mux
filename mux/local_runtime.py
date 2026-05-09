@@ -23,13 +23,28 @@ def ensure_local_runtime(cfg: dict) -> tuple[bool, str]:
 
     if restart_cmd:
         try:
-            subprocess.run(restart_cmd, shell=True, check=False, capture_output=True, text=True, timeout=180)
+            proc = subprocess.run(restart_cmd, shell=True, check=False, capture_output=True, text=True, timeout=180)
+            if proc.returncode != 0:
+                err = (proc.stderr or proc.stdout or "").strip()[:200]
+                return False, f"restart_failed:rc={proc.returncode}:{err}"
         except Exception as e:
             return False, f"restart_failed:{e}"
+    else:
+        return False, "unhealthy_no_restart_cmd"
 
-    for _ in range(retries):
+    # First probe quickly after restart to distinguish booting from hard-failed.
+    if not _health_ok(health_url):
+        time.sleep(max(1, min(delay, 3)))
+
+    status = "unhealthy_after_restart"
+    for idx in range(retries):
         if _health_ok(health_url):
             return True, "recovered"
+        if idx == 0:
+            # Give callers clearer state than generic "unhealthy".
+            status = "booting_after_restart"
+        else:
+            status = "still_unhealthy_after_restart"
         time.sleep(delay)
 
-    return False, "unhealthy_after_restart"
+    return False, status

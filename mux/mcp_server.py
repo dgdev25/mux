@@ -6,6 +6,8 @@ from typing import Any
 from mcp.server.fastmcp import FastMCP
 
 from mux.doctor import run_doctor
+from mux.local_runtime import ensure_local_runtime
+from mux.config import load_config
 from mux.router import run
 
 
@@ -17,6 +19,7 @@ def _normalize_result(out: dict[str, Any]) -> dict[str, Any]:
         "route": out.get("route"),
         "model": getattr(out.get("result"), "model", None),
         "reason": out.get("reason"),
+        "run_id": out.get("run_id"),
         "retries": out.get("retries"),
         "verify_ok": getattr(out.get("verify"), "ok", None),
         "verify_summary": getattr(out.get("verify"), "summary", None),
@@ -58,6 +61,23 @@ def mux_json(payload_json: str) -> dict[str, Any]:
     if not isinstance(task, str) or not task.strip():
         raise ValueError("payload_json must include non-empty string field 'task'")
     return mux(task)
+
+
+@mcp.tool()
+def mux_health() -> dict[str, Any]:
+    """Return runtime liveness state and basic doctor summary."""
+    cfg = load_config()
+    runtime_ok, runtime_status = ensure_local_runtime(cfg)
+    overall, checks = run_doctor()
+    return {
+        "runtime_ok": runtime_ok,
+        "runtime_status": runtime_status,
+        "doctor_overall": overall,
+        "checks": [
+            {"name": name, "ok": ok, "detail": detail}
+            for name, ok, detail in checks
+        ],
+    }
 
 
 if __name__ == "__main__":
