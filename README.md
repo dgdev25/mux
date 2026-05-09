@@ -55,3 +55,26 @@ Exposed MCP tools:
 - `mux`
 - `mux_run_task` (compat alias)
 - `mux_json`
+
+## MCP semantic examples
+Use natural task wording in your MCP client and let `mux` decide local vs escalation.
+
+Example prompts for `mux(task=...)`:
+
+- `Harden JWT auth middleware in src/auth, keep API behavior unchanged, and add regression tests.`
+- `Build a small Python CLI project in /tmp/report-cli with README and pytest coverage.`
+- `Refactor caching layer for readability, preserve performance characteristics, and run tests.`
+- `Investigate flaky test failures in tests/integration and propose the minimal safe fix.`
+
+JSON payload example for `mux_json(payload_json=...)`:
+
+```json
+{
+  "task": "Build a scientific calculator project in /tmp/calculator with runnable Python CLI, safe expression evaluator (no eval/exec), README, and tests. Ensure files are written on disk and run tests before finishing."
+}
+```
+
+Operational checks:
+
+- Use `mux_doctor` to confirm runtime + CLI backend readiness.
+- Use `mux_health` to inspect runtime diagnostics, last run id, route counts, and recent failure reasons.
