@@ -3,7 +3,7 @@
     "mux": {
       "command": "python3",
       "args": ["-m", "mux.mcp_server"],
-      "cwd": "/absolute/path/to/mux"
+      "cwd": "<repo-root>"
     }
   }
 }

@@ -54,6 +54,10 @@ python3 -m venv .venv
 pip install -r requirements.txt
 ```
 
+Qwen 35B runtime setup guide:
+
+- [docs/qwen-35b-setup.md](docs/qwen-35b-setup.md)
+
 ## Quick start
 
 Run a normal task:
@@ -213,6 +217,7 @@ Primary config file: `config/mux.yaml`
 
 `local_runtime.restart_cmd` is intentionally blank by default.
 Set it to your own restart command for the local model service.
+For Qwen 35B runtime alignment, see [docs/qwen-35b-setup.md](docs/qwen-35b-setup.md).
 
 ## Ledger and observability
 
@@ -243,7 +248,6 @@ Current suite covers:
 - ledger write/rotation/summaries
 - local executor schema validation
 - SOTA provider fallback and execution behavior
-- calculator functional tests
 
 ## Troubleshooting
 
