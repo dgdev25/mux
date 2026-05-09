@@ -6,9 +6,8 @@ from typing import Any
 from mcp.server.fastmcp import FastMCP
 
 from mux.doctor import run_doctor
-from mux.local_runtime import ensure_local_runtime
-from mux.config import load_config
 from mux.router import run
+from mux.status import build_status
 
 
 mcp = FastMCP("mux")
@@ -65,19 +64,8 @@ def mux_json(payload_json: str) -> dict[str, Any]:
 
 @mcp.tool()
 def mux_health() -> dict[str, Any]:
-    """Return runtime liveness state and basic doctor summary."""
-    cfg = load_config()
-    runtime_ok, runtime_status = ensure_local_runtime(cfg)
-    overall, checks = run_doctor()
-    return {
-        "runtime_ok": runtime_ok,
-        "runtime_status": runtime_status,
-        "doctor_overall": overall,
-        "checks": [
-            {"name": name, "ok": ok, "detail": detail}
-            for name, ok, detail in checks
-        ],
-    }
+    """Return runtime liveness, diagnostics, and recent operational summary."""
+    return build_status()
 
 
 if __name__ == "__main__":

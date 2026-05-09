@@ -30,6 +30,15 @@ def _check_restart_cmd(cmd: str) -> tuple[bool, str]:
         return False, str(e)
 
 
+def _check_restart_contract(cmd: str) -> tuple[bool, str]:
+    parts = shlex.split(cmd)
+    if not parts:
+        return False, "empty command"
+    if "restart" not in parts:
+        return False, "missing_restart_token"
+    return True, "contains_restart_token"
+
+
 def _check_cli(name: str, binary: str, args: list[str]) -> tuple[bool, str]:
     path = shutil.which(binary)
     if not path:
@@ -77,6 +86,8 @@ def run_doctor() -> tuple[bool, list[tuple[str, bool, str]]]:
     if restart_cmd:
         ok, msg = _check_restart_cmd(restart_cmd)
         checks.append(("restart_cmd", ok, msg))
+        ok, msg = _check_restart_contract(restart_cmd)
+        checks.append(("restart_contract", ok, msg))
 
     scli = cfg.get("providers", {}).get("sota_cli", {})
     tools = scli.get("tools", {})

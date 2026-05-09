@@ -69,3 +69,9 @@ workflow:
 local_executor:
   max_attempts: 4
   max_tokens: 6000
+
+ledger:
+  max_bytes: 2000000
+  max_rotated_files: 5
+  summary_window: 200
+  recent_failures_limit: 5

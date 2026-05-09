@@ -115,7 +115,7 @@ def run(task: str) -> dict:
 
     if _requires_persistence(task):
         out = _run_persistence_workflow(task, cfg)
-        run_id = append_run(task=task, out=out, runtime_status=out.get("runtime_status", "persistence_flow"))
+        run_id = append_run(task=task, out=out, runtime_status=out.get("runtime_status", "persistence_flow"), cfg=cfg)
         out["run_id"] = run_id
         return out
 
@@ -155,7 +155,7 @@ def run(task: str) -> dict:
                 "reason": "",
                 "retries": retries,
             }
-            run_id = append_run(task=task, out=out, runtime_status=runtime_status)
+            run_id = append_run(task=task, out=out, runtime_status=runtime_status, cfg=cfg)
             out["run_id"] = run_id
             return out
 
@@ -168,7 +168,7 @@ def run(task: str) -> dict:
                 "reason": f"{reason}; sota_unavailable",
                 "retries": retries,
             }
-            run_id = append_run(task=task, out=out, runtime_status=runtime_status)
+            run_id = append_run(task=task, out=out, runtime_status=runtime_status, cfg=cfg)
             out["run_id"] = run_id
             return out
 
@@ -180,7 +180,7 @@ def run(task: str) -> dict:
             "reason": reason,
             "retries": retries,
         }
-        run_id = append_run(task=task, out=out, runtime_status=runtime_status)
+        run_id = append_run(task=task, out=out, runtime_status=runtime_status, cfg=cfg)
         out["run_id"] = run_id
         return out
 
@@ -193,7 +193,7 @@ def run(task: str) -> dict:
             "reason": f"local_down_and_sota_unavailable:{local_status}",
             "retries": retries,
         }
-        run_id = append_run(task=task, out=out, runtime_status=runtime_status)
+        run_id = append_run(task=task, out=out, runtime_status=runtime_status, cfg=cfg)
         out["run_id"] = run_id
         return out
 
@@ -204,6 +204,6 @@ def run(task: str) -> dict:
         "reason": f"local_unavailable:{local_status}",
         "retries": retries,
     }
-    run_id = append_run(task=task, out=out, runtime_status=runtime_status)
+    run_id = append_run(task=task, out=out, runtime_status=runtime_status, cfg=cfg)
     out["run_id"] = run_id
     return out

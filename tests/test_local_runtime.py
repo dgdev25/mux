@@ -33,3 +33,25 @@ def test_ensure_local_runtime_reports_restart_failure(monkeypatch):
     ok, status = local_runtime.ensure_local_runtime(cfg)
     assert ok is False
     assert status.startswith("restart_failed:")
+
+
+def test_diagnose_local_runtime_includes_probe_and_timing(monkeypatch):
+    calls = {"n": 0}
+
+    def fake_health(_: str, timeout: int = 5) -> bool:
+        calls["n"] += 1
+        return calls["n"] >= 3
+
+    monkeypatch.setattr(local_runtime, "_health_ok", fake_health)
+    monkeypatch.setattr(
+        local_runtime.subprocess,
+        "run",
+        lambda *args, **kwargs: SimpleNamespace(returncode=0, stdout="", stderr=""),
+    )
+    cfg = {"local_runtime": {"health_url": "http://x", "restart_cmd": "echo ok", "health_retries": 3, "health_retry_delay_sec": 0}}
+    diag = local_runtime.diagnose_local_runtime(cfg)
+    assert diag["ok"] is True
+    assert diag["status"] == "recovered"
+    assert diag["restart_attempted"] is True
+    assert isinstance(diag["restart_elapsed_ms"], int)
+    assert len(diag["probes"]) >= 2
