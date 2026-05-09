@@ -57,3 +57,15 @@ providers:
         advisory_args: ["-p"]
         exec_args: ["-p"]
         prompt_via: "arg"
+
+workflow:
+  implementation_provider: local_executor
+  review_provider: sota
+  run_sota_review: true
+  local_apply_review: true
+  allow_sota_write_fallback: false
+  target_local_implementation_ratio: 0.95
+
+local_executor:
+  max_attempts: 4
+  max_tokens: 6000

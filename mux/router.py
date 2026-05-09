@@ -1,7 +1,9 @@
 import re
 from mux.config import load_config
 from mux.local_runtime import ensure_local_runtime
+from mux.metrics import increment, ratio_local_impl
 from mux.policies.escalation import should_escalate
+from mux.providers.local_executor import run_local_executor
 from mux.providers.local_provider import run_local
 from mux.providers.sota_provider import run_sota, run_executor
 from mux.verifier import verify
@@ -17,26 +19,95 @@ def _requires_persistence(task: str) -> bool:
     t = task.lower()
     if any(k in t for k in PERSISTENCE_HINTS):
         return True
-    # Any explicit absolute path strongly suggests file operations.
     return re.search(r"/[^\s]+", task) is not None
+
+
+def _run_persistence_workflow(task: str, cfg: dict) -> dict:
+    local_ok, local_status = ensure_local_runtime(cfg)
+    if not local_ok:
+        if not cfg.get("workflow", {}).get("allow_sota_write_fallback", True):
+            return {
+                "route": "none",
+                "result": run_local_executor(task, cfg),
+                "verify": verify("", cfg),
+                "reason": f"local_runtime_unavailable:{local_status}",
+                "retries": 0,
+            }
+    wcfg = cfg.get("workflow", {})
+    run_review = bool(wcfg.get("run_sota_review", True))
+    allow_sota_write_fallback = bool(wcfg.get("allow_sota_write_fallback", True))
+    local_apply_review = bool(wcfg.get("local_apply_review", True))
+    target_ratio = float(wcfg.get("target_local_implementation_ratio", 0.95))
+
+    local = run_local_executor(task, cfg)
+    if not local.output.startswith("LOCAL_EXECUTOR_ERROR"):
+        stats = increment("local_impl_tasks", 1)
+        v_local = verify(local.output, cfg)
+
+        review_text = ""
+        if run_review:
+            review = run_sota(
+                task="Peer-review this implementation. Focus on correctness, bugs, tests, and minimal fixes.",
+                context=f"task={task}\nimplementation_summary={local.output}",
+                cfg=cfg,
+            )
+            increment("sota_review_tasks", 1)
+            review_text = review.output if not review.output.startswith("SOTA_PROVIDER_ERROR") else ""
+
+        if local_apply_review and review_text:
+            patched = run_local_executor(task, cfg, review_feedback=review_text)
+            if not patched.output.startswith("LOCAL_EXECUTOR_ERROR"):
+                increment("local_impl_tasks", 1)
+                v = verify(patched.output, cfg)
+                return {
+                    "route": "local_executor",
+                    "result": patched,
+                    "verify": v,
+                    "reason": "local_impl_plus_sota_review",
+                    "retries": 0,
+                    "local_impl_ratio": ratio_local_impl(stats),
+                }
+
+        return {
+            "route": "local_executor",
+            "result": local,
+            "verify": v_local,
+            "reason": "local_impl",
+            "retries": 0,
+            "local_impl_ratio": ratio_local_impl(stats),
+        }
+
+    if allow_sota_write_fallback:
+        sota_exec = run_executor(task, cfg)
+        if not sota_exec.output.startswith("EXECUTOR_ERROR"):
+            stats = increment("sota_write_tasks", 1)
+            v = verify(sota_exec.output, cfg)
+            reason = "sota_write_fallback"
+            if ratio_local_impl(stats) < target_ratio:
+                reason += f";ratio_below_target:{ratio_local_impl(stats):.2f}"
+            return {
+                "route": "executor",
+                "result": sota_exec,
+                "verify": v,
+                "reason": reason,
+                "retries": 0,
+                "local_impl_ratio": ratio_local_impl(stats),
+            }
+
+    return {
+        "route": "none",
+        "result": local,
+        "verify": verify("", cfg),
+        "reason": "local_executor_failed_and_no_fallback",
+        "retries": 0,
+    }
 
 
 def run(task: str) -> dict:
     cfg = load_config()
 
-    # Critical bug fix: persistence tasks must run an executor, not advisory text generation.
     if _requires_persistence(task):
-        exec_result = run_executor(task, cfg)
-        v = verify(exec_result.output, cfg)
-        route = "executor" if not exec_result.output.startswith("EXECUTOR_ERROR") else "none"
-        reason = "persistence_task" if route == "executor" else "executor_unavailable"
-        return {
-            "route": route,
-            "result": exec_result,
-            "verify": v,
-            "reason": reason,
-            "retries": 0,
-        }
+        return _run_persistence_workflow(task, cfg)
 
     rcfg = cfg["router"]
     max_retries = int(rcfg.get("max_local_retries", 2))
