@@ -78,15 +78,15 @@ cat logs/run_ledger.jsonl | tail -5 | jq .
 
 ## Installation
 
-### 1. Clone and set up Python environment
+### Quick Start
 
 ```bash
 git clone https://github.com/dgdev25/mux.git
 cd mux
-python3 -m venv .venv
-. .venv/bin/activate
-pip install -r requirements.txt
+./setup.sh
 ```
+
+The setup script handles everything: Python version check, virtual environment creation, dependency installation, and automatic configuration of mux in Claude Code, Codex, or Gemini (whichever you have installed). After it completes, restart your CLI tool and you're done.
 
 **Requirements:**
 - Python 3.10+
@@ -95,9 +95,11 @@ pip install -r requirements.txt
   - `codex` (OpenAI Codex)
   - `gemini` (Google Gemini CLI)
 
-### 2. Set up a local model (optional but recommended)
+### Set up a local model (optional but recommended)
 
 **Important:** If you don't set up a local model, `mux` will still work but will escalate all tasks to cloud backends. Local models give you the benefits of low latency and privacy.
+
+After running `./setup.sh`, configure your local model server and update `config/mux.yaml` with the endpoint details.
 
 #### Quick start: Use Ollama (recommended for beginners)
 
