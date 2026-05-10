@@ -1,25 +1,66 @@
 # mux
 
-`mux` is a local-first coding router with MCP support.
-It routes coding tasks between:
+**A pragmatic local-first coding assistant with automatic escalation.**
 
-- a local OpenAI-compatible model endpoint
-- CLI-based SOTA backends (`codex`, `claude`, `gemini`)
+`mux` runs coding tasks locally when it's confident, and escalates to cloud backends (Claude, Codex, Gemini) when it needs to. It's designed to maximize local execution while maintaining reliability through transparency and intelligent fallback.
 
-`mux` is designed for:
+**Use mux when you want:**
+- Coding tasks to run on your machine, not in the cloud
+- Automatic escalation when complexity increases or confidence is low
+- Visibility into which tasks went local vs. cloud, and why
+- Lower latency for routine refactors, fixes, and small features
 
-- high local implementation share
-- explicit escalation when risk increases
-- operational visibility (health, ledger, routing summary)
+## Core Features
 
-## Features
+- **Local-first with smart escalation** — runs tasks locally unless confidence is low, complexity is high, or verification fails
+- **Automatic fallback** — escalates to Claude, Codex, or Gemini CLIs with one command
+- **Observability** — ledger tracking of every task, routing decisions, and failure reasons
+- **Health checks** — quickly verify local model availability and backend CLIs
+- **MCP integration** — use as a tool in Claude Code or any MCP-compatible client
+- **File-aware** — handles file creation, modification, and testing through structured materialization
 
-- Local-first routing with escalation policy.
-- Persistence-aware workflow for tasks that imply filesystem changes.
-- MCP server with callable tools (`mux`, `mux_json`, `mux_health`, `mux_doctor`).
-- Runtime preflight and restart attempts for local model availability.
-- Run ledger with rotation and summary extraction.
-- CLI status command for quick operator checks.
+## Quick Start
+
+After installation, you're ready to route tasks:
+
+```bash
+# Run a task (routes locally if available, escalates if needed)
+python3 -m mux.cli run --task "Fix the null pointer bug in UserService and keep tests passing"
+
+# Check health of local model and backends
+python3 -m mux.cli doctor
+
+# View routing stats and recent activity
+python3 -m mux.cli status
+```
+
+Tasks with file paths or explicit intent (`create`, `build`, `scaffold`) automatically use local executor:
+
+```bash
+# Local executor will write these files to disk
+python3 -m mux.cli run --task "Create a Python CLI project in /tmp/my-app with README and tests"
+```
+
+View what was routed, why, and recent failures:
+
+```bash
+cat logs/run_ledger.jsonl | tail -5 | jq .
+```
+
+## How mux makes routing decisions
+
+**Local tasks stay local** when:
+- Local model is available
+- Task confidence is ≥0.6 (adjustable)
+- No escalation keywords detected (see below)
+
+**Tasks escalate to cloud** when:
+- Local model is unavailable
+- Confidence drops below threshold
+- Complexity keywords detected: `security`, `migration`, `architecture`, `multi-file`, `refactor`, `concurrency`, etc.
+- Verification repeatedly fails
+
+**File-creation tasks** (detected by path or keywords like `create`, `build`, `scaffold`) route through local executor first, then optionally get SOTA peer review.
 
 ## Repository layout
 
@@ -35,16 +76,9 @@ It routes coding tasks between:
 - `mux/status.py` unified operational status payload
 - `config/mux.yaml` primary configuration
 
-## Requirements
-
-- Python `3.10+`
-- Local model endpoint compatible with OpenAI chat/completions API
-- At least one installed CLI backend on `PATH`:
-  - `codex`
-  - `claude`
-  - `gemini`
-
 ## Installation
+
+### 1. Clone and set up Python environment
 
 ```bash
 git clone https://github.com/dgdev25/mux.git
@@ -54,230 +88,411 @@ python3 -m venv .venv
 pip install -r requirements.txt
 ```
 
-Qwen 35B runtime setup guide:
+**Requirements:**
+- Python 3.10+
+- At least one cloud backend CLI installed (for escalation):
+  - `claude` (Claude Code CLI)
+  - `codex` (OpenAI Codex)
+  - `gemini` (Google Gemini CLI)
 
-- [docs/qwen-35b-setup.md](docs/qwen-35b-setup.md)
+### 2. Set up a local model (optional but recommended)
 
-## Quick start
+**Important:** If you don't set up a local model, `mux` will still work but will escalate all tasks to cloud backends. Local models give you the benefits of low latency and privacy.
 
-Run a normal task:
+#### Quick start: Use Ollama (recommended for beginners)
+
+Ollama makes running local models simple. Install it, then:
 
 ```bash
-python3 -m mux.cli run --task "Refactor auth middleware and keep tests passing"
+# Download and run a model (this takes a few minutes the first time)
+ollama run mistral:7b
+
+# In another terminal, verify it's running:
+curl -s http://127.0.0.1:11434/api/tags | grep mistral
 ```
 
-Check backend and runtime readiness:
+Then update `config/mux.yaml`:
+
+```yaml
+local_runtime:
+  health_url: "http://127.0.0.1:11434/api/health"
+  restart_cmd: "systemctl restart ollama"  # or your restart method
+
+providers:
+  local:
+    base_url: "http://127.0.0.1:11434/v1"
+    model: "mistral:7b"
+```
+
+Test it:
 
 ```bash
 python3 -m mux.cli doctor
-```
-
-Get compact operational summary:
-
-```bash
 python3 -m mux.cli status
 ```
 
-## Routing model
+#### More options
 
-`mux` has two broad modes:
+- **Ollama** (simplest): Download from [ollama.ai](https://ollama.ai) — works for Mistral, Llama, and other models
+- **LM Studio** (GUI-friendly): Download from [lmstudio.ai](https://lmstudio.ai) — visually manage models, same OpenAI API
+- **Qwen 35B** (high performance): More complex setup for better quality. See [docs/qwen-35b-setup.md](docs/qwen-35b-setup.md)
+- **vLLM** or **Text Generation WebUI**: Advanced setups for production use
 
-- Advisory mode: non-persistence tasks can stay local or escalate to SOTA.
-- Persistence workflow: tasks that imply file writes route through local executor first.
+The key requirement: your local model server must expose an **OpenAI-compatible `/v1/chat/completions` endpoint**. Almost all modern local model servers support this.
+
+## Advanced Routing (How mux works under the hood)
+
+### Two task types
+
+1. **Advisory tasks** (read-only, no file changes)
+   - Examples: refactoring explanations, code reviews, architecture discussions
+   - Route: local model → confidence check → escalate if needed
+
+2. **Persistence tasks** (create/modify files)
+   - Examples: `create a project in /tmp/app`, `build a CLI in /data/tool`
+   - Route: local executor → file materialization → optional SOTA review → optional SOTA fallback
 
 ### Persistence detection
 
-`mux` treats a task as persistence-oriented when semantic hints are present (for example `build`, `create`, `scaffold`, `project in`) or when an absolute path is detected in the prompt.
+Detected by keywords (`build`, `create`, `scaffold`, `project`) or absolute paths in task prompt.
 
-### Escalation behavior
+### Escalation triggers
 
-For non-persistence tasks, escalation may happen when:
+**Local model** escalates when any of these occur:
+- Confidence drops below 0.6 (configurable)
+- Complexity keywords found: `security`, `architecture`, `migration`, `multi-file`, `refactor`, `concurrency`, `performance`, `ambiguous`
+- Verification fails repeatedly
 
-- local confidence is below threshold
-- verification repeatedly fails
-- complexity keyword score is high
+**Local executor** can request SOTA review after file creation, and optionally fall back to SOTA write if local materialization fails.
 
-For persistence tasks:
+### Confidence scoring
 
-- local executor runs first
-- optional SOTA peer review can be applied
-- optional SOTA write fallback can be enabled
+Confidence is determined by:
+- Response length (longer = more thought)
+- Completion reason (`stop` and `length` are good, others lower confidence)
+- Task complexity
 
-## CLI commands
+Adjust `router.local_confidence_threshold` in `config/mux.yaml` to be more/less aggressive about escalation.
 
-### `run`
+## CLI Commands
+
+### `run` — Execute a task
 
 ```bash
-python3 -m mux.cli run --task "<task>"
+python3 -m mux.cli run --task "Fix the JWT validation bug in auth/middleware.py"
 ```
 
-Output includes:
+Returns:
+- `route`: `local` or `{backend}` (e.g., `claude`, `codex`)
+- `model`: Which model handled the task
+- `reason`: Why this route was chosen
+- `run_id`: Unique ID for logging/tracking
+- `output`: The model's response
 
-- selected route
-- model identifier
-- reason
-- run id
-- retry count
-- verification summary
-- model output
-
-### `doctor`
+### `doctor` — Check system health
 
 ```bash
 python3 -m mux.cli doctor
 ```
 
-Checks:
+Verifies:
+- Local model available at configured health URL
+- Restart command is valid (if configured)
+- Cloud backend CLIs installed and accessible
+- Network connectivity
 
-- local runtime health URL
-- restart command availability and contract
-- backend CLI availability/probe
+Run this if tasks aren't behaving as expected.
 
-### `status`
+### `status` — Quick operational summary
 
 ```bash
 python3 -m mux.cli status
 ```
 
 Shows:
+- Local model health (UP/DOWN)
+- Recent task counts by route
+- Common failure reasons from last 200 tasks
+- Ledger file location
 
-- runtime pass/fail and status string
-- last ledger run id
-- route counts from recent ledger window
-- recent failure reason count and values
+Use this to spot trends (e.g., too many escalations, repeated errors).
 
-## MCP server
+## Using mux as an MCP tool (in Claude Code or other clients)
 
-Run MCP stdio server:
+### Start the MCP server
 
 ```bash
 . .venv/bin/activate
 python3 -m mux.mcp_server
 ```
 
-Example MCP config is in `mcp-config.example.json`.
+This starts a stdio server that listens for requests from MCP clients.
 
-### Exposed MCP tools
+### Configure your MCP client
 
-- `mux(task: str)`
-- `mux_run_task(task: str)` compatibility alias
-- `mux_json(payload_json: str)`
-- `mux_doctor()`
-- `mux_health()`
-
-### Semantic wording examples
-
-Use outcome-focused prompts and let `mux` decide route/escalation:
-
-- `Harden JWT auth middleware in src/auth, keep API behavior unchanged, and add regression tests.`
-- `Refactor caching layer for readability, preserve performance characteristics, and run tests.`
-- `Investigate flaky integration tests and propose the minimal safe fix.`
-- `Build a small Python CLI project in /tmp/report-cli with README and tests.`
-
-`mux_json` example payload:
+Add to your Claude Code `settings.json`:
 
 ```json
 {
-  "task": "Build a scientific calculator project in /tmp/calculator with runnable Python CLI, safe expression evaluator (no eval/exec), README, and tests. Ensure files are written on disk and run tests before finishing."
+  "mcpServers": {
+    "mux": {
+      "command": "python3",
+      "args": ["-m", "mux.mcp_server"],
+      "cwd": "/path/to/mux"
+    }
+  }
+}
+```
+
+Or copy the template from `mcp-config.example.json` and adjust paths.
+
+### Available MCP tools
+
+- `mux(task: str)` — Route a single task
+- `mux_json(payload_json: str)` — Send a JSON payload with options
+- `mux_doctor()` — Health check
+- `mux_health()` — Quick health status
+
+### How to phrase tasks for best results
+
+Be outcome-focused; let `mux` decide routing:
+
+✅ **Good:**
+- `Harden JWT auth middleware, keep API behavior unchanged, add regression tests`
+- `Refactor caching layer for readability, preserve performance, run tests`
+- `Build a Python CLI in /tmp/report-cli with README, tests, and argument parsing`
+- `Investigate flaky integration tests and propose minimal safe fix`
+
+❌ **Avoid:**
+- `Use Claude to refactor...` (let mux choose the backend)
+- `Implement X in 100 tokens` (constraints pre-judge routing)
+- `Fix this in local mode` (mux decides when to escalate)
+
+### JSON payload (for advanced use)
+
+```json
+{
+  "task": "Build a scientific calculator in /tmp/calculator with Python CLI, safe expression eval, README, and tests",
+  "prefer_local": false,
+  "verify_with": "claude"
 }
 ```
 
 ## Configuration
 
-Primary config file: `config/mux.yaml`
+All settings are in `config/mux.yaml`. The defaults work for most users.
 
-### Key sections
+### Common adjustments
 
-- `router`
-  - local retry limits
-  - confidence threshold
-  - complexity keywords
-- `local_runtime`
-  - `health_url`
-  - `restart_cmd`
-  - retry timings
-- `providers.local`
-  - local endpoint base URL
-  - model id
-  - generation controls
-- `providers.sota_cli`
-  - backend order
-  - per-tool binary and args
-  - execution timeout/retry behavior
-- `workflow`
-  - local vs SOTA write behavior
-  - peer review application settings
-  - local implementation ratio target
-- `ledger`
-  - rotation threshold
-  - rotated file retention
-  - summary windows
+**To use a different local model:**
 
-### Important note about defaults
+```yaml
+providers:
+  local:
+    base_url: "http://127.0.0.1:11434/v1"  # Your model server URL
+    model: "mistral:7b"                     # Your model name
+```
 
-`local_runtime.restart_cmd` is intentionally blank by default.
-Set it to your own restart command for the local model service.
-For Qwen 35B runtime alignment, see [docs/qwen-35b-setup.md](docs/qwen-35b-setup.md).
+**To escalate more aggressively (safer, but more cloud usage):**
 
-## Ledger and observability
+```yaml
+router:
+  local_confidence_threshold: 0.8  # Default 0.6; higher = escalate sooner
+```
 
-Run records are appended to a JSONL ledger.
+**To trust local model more (faster, riskier):**
 
-Current default ledger file path:
+```yaml
+router:
+  local_confidence_threshold: 0.4  # Lower = keep more tasks local
+```
 
-- `<repo-root>/logs/run_ledger.jsonl`
+**To set up automatic restart of your local model service:**
 
-Ledger supports:
+```yaml
+local_runtime:
+  restart_cmd: "/home/user/models/restart-ollama.sh"  # Custom script or systemctl
+```
 
-- size-based rotation
-- rotated-file retention cap
-- recent route and failure summaries used by `status` and `mux_health`
+**To change where logs are stored:**
+
+```yaml
+ledger:
+  file_path: "/var/log/mux/run_ledger.jsonl"
+```
+
+### All configuration sections
+
+| Section | Purpose | Default |
+|---------|---------|---------|
+| `router` | Escalation thresholds and keywords | 0.6 confidence, `security`, `architecture` escalate |
+| `local_runtime` | Health URL and restart strategy | `http://127.0.0.1:18473/health` |
+| `providers.local` | Local model endpoint details | Qwen 35B on port 18473 |
+| `providers.sota_cli` | Cloud backends (Claude, Codex, Gemini) | All available, Claude first |
+| `workflow` | How persistence tasks are handled | Escalate, review, no fallback |
+| `ledger` | Logging and observability | ~2MB rotation, keep 5 files |
+
+See comments in `config/mux.yaml` for every option.
+
+## Observability and logging
+
+Every task is logged to a JSON ledger for auditing and analytics.
+
+**Default location:** `logs/run_ledger.jsonl`
+
+**View recent tasks:**
+
+```bash
+# Last 5 tasks (pretty-printed)
+tail -5 logs/run_ledger.jsonl | jq .
+
+# All local tasks
+grep '"route":"local"' logs/run_ledger.jsonl | jq .
+
+# All escalations (with reasons)
+grep -v '"route":"local"' logs/run_ledger.jsonl | jq '{route, reason, model}'
+
+# Count by route in last 100 tasks
+tail -100 logs/run_ledger.jsonl | jq -s 'group_by(.route) | map({route: .[0].route, count: length})'
+```
+
+**Ledger fields:**
+- `run_id`: Unique identifier
+- `route`: `local` or backend name (`claude`, `codex`, `gemini`)
+- `reason`: Why this route was chosen
+- `model`: Which model handled it
+- `confidence`: Confidence score (0–1)
+- `timestamp`: When it ran
+- `task_length`: Characters in task
+- `output_length`: Characters in response
+
+**Automatic rotation:** Ledger rotates at ~2MB and keeps 5 historical files.
 
 ## Testing
 
-Run all tests:
-
 ```bash
-pytest -q
+pytest -q           # Run all tests
+pytest -v           # Verbose output
+pytest tests/test_policy.py  # Run one test file
 ```
 
-Current suite covers:
+Test coverage includes:
+- Escalation routing logic (when does local stay local?)
+- Local runtime health checks and recovery
+- Ledger persistence and rotation
+- File materialization and security
+- Cloud backend fallback behavior
 
-- policy escalation logic
-- local runtime diagnostics
-- ledger write/rotation/summaries
-- local executor schema validation
-- SOTA provider fallback and execution behavior
+All tests use mocks and don't hit real APIs or models.
 
 ## Troubleshooting
 
-### Local runtime unavailable
+### Local model isn't being used (everything escalates to cloud)
 
-- Run `python3 -m mux.cli doctor`.
-- Verify `local_runtime.health_url`.
-- Verify `local_runtime.restart_cmd` points to a valid restart command.
+```bash
+python3 -m mux.cli doctor
+```
 
-### Backend CLI not detected
+If local runtime shows DOWN:
 
-- Ensure `codex`, `claude`, or `gemini` is installed and available on `PATH`.
-- Confirm tool binary names in `config/mux.yaml`.
-- Re-run `python3 -m mux.cli doctor`.
+1. **Check your model server is running:**
+   ```bash
+   curl -s http://127.0.0.1:18473/health  # or your configured port
+   ```
 
-### Tasks produce no file changes
+2. **Verify the URL in config:**
+   ```bash
+   grep health_url config/mux.yaml
+   ```
 
-- Ensure your task includes explicit persistence intent and target path.
-- Check executor-related output and `reason` in `run` results.
-- Review `mux_health` and ledger summaries for repeated failure reasons.
+3. **If using Ollama, make sure it's running:**
+   ```bash
+   ollama serve  # or check systemctl status ollama
+   ```
 
-## Security and safety notes
+4. **Check logs:**
+   ```bash
+   tail -20 logs/run_ledger.jsonl | jq '.[] | select(.route != "local") | {reason, confidence}'
+   ```
 
-- For persistence tasks, local executor enforces strict JSON materialization schema.
-- Path traversal and absolute path escapes are rejected in local executor payload parsing.
-- SOTA execution mode can invoke powerful CLI commands based on configured tool args.
-  - Review `providers.sota_cli.tools.*.exec_args` before production use.
+### Files aren't being created
 
-## Development notes
+Make sure your task includes:
+- An absolute path (e.g., `/tmp/my-app`) or relative to current dir
+- Keywords like `create`, `build`, `scaffold`, `project`
 
-- Keep docs and tool surface aligned (CLI and MCP names).
-- Prefer updating tests when changing routing, diagnostics, or provider behavior.
-- If config contract changes, update both this README and `config/mux.yaml` comments/keys in the same change.
+Example task:
+```bash
+python3 -m mux.cli run --task "Create a Python project in /tmp/test-app with main.py and tests"
+```
+
+Check the ledger reason if it doesn't create files:
+```bash
+tail -1 logs/run_ledger.jsonl | jq '{reason, route}'
+```
+
+### Backend CLI not found
+
+```bash
+which claude   # or which codex, which gemini
+```
+
+If not installed, use your package manager or visit:
+- Claude: https://github.com/anthropics/claude-code
+- Codex: https://github.com/openai/codex-cli
+- Gemini: https://github.com/google-gemini/google-cloud-sdk
+
+### Tasks are escalating too much
+
+Lower the confidence threshold:
+
+```yaml
+router:
+  local_confidence_threshold: 0.4  # Default 0.6
+```
+
+Or check if complexity keywords are triggering escalation:
+
+```bash
+grep '"reason":"complexity' logs/run_ledger.jsonl | tail -10
+```
+
+## Security considerations
+
+**Local model safety:**
+- Your code never leaves your machine (good for IP, bad for capability)
+- Local models can be weaker than cloud models — expect more escalations
+- No API keys needed for local mode
+
+**File materialization safety:**
+- Only files in the configured work directory can be created
+- Path traversal (`../`) is rejected
+- Absolute paths outside the intended directory are rejected
+- All file operations are logged
+
+**Cloud escalation safety:**
+- Cloud backend CLIs use your configured API keys (set via env vars)
+- Review what commands are actually being executed (check logs)
+- `mux` doesn't modify your actual `claude`, `codex`, or `gemini` configurations
+
+**Running in production:**
+- Start with local model only, no cloud escalation
+- Gradually expand escalation as you build confidence
+- Monitor the ledger for what's staying local vs. escalating
+- Set `router.local_confidence_threshold` conservatively (higher = safer)
+
+## Contributing and development
+
+**Common workflows:**
+
+- **Adding a new config option:** Update `config/mux.yaml`, add env var support, update `types.py`, add test
+- **Changing routing logic:** Update `router.py`, add test in `test_policy.py`, update README routing section
+- **Adding a new backend:** Add to `providers/sota_provider.py`, configure in `mux.yaml`, test
+
+**Before committing:**
+
+```bash
+pytest -q                    # All tests pass
+python3 -m mux.cli doctor   # Doctor works
+python3 -m mux.cli status   # Status works
+```
