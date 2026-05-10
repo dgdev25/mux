@@ -101,44 +101,28 @@ The setup script handles everything: Python version check, virtual environment c
 
 After running `./setup.sh`, configure your local model server and update `config/mux.yaml` with the endpoint details.
 
-#### Quick start: Use Ollama (recommended for beginners)
+#### Recommended: Qwen 35B (best performance)
 
-Ollama makes running local models simple. Install it, then:
-
-```bash
-# Download and run a model (this takes a few minutes the first time)
-ollama run mistral:7b
-
-# In another terminal, verify it's running:
-curl -s http://127.0.0.1:11434/api/tags | grep mistral
-```
-
-Then update `config/mux.yaml`:
-
-```yaml
-local_runtime:
-  health_url: "http://127.0.0.1:11434/api/health"
-  restart_cmd: "systemctl restart ollama"  # or your restart method
-
-providers:
-  local:
-    base_url: "http://127.0.0.1:11434/v1"
-    model: "mistral:7b"
-```
-
-Test it:
+For best inference quality and speed, set up Qwen 35B using the specialized installer:
 
 ```bash
-python3 -m mux.cli doctor
-python3 -m mux.cli status
+# See the detailed setup guide:
+cat docs/qwen-35b-setup.md
 ```
 
-#### More options
+This uses [`ik_llama.cpp`](https://github.com/ikawrakow/ik_llama.cpp) with a quantized Qwen 35B model. The setup is more involved but provides significantly better results than smaller models.
 
-- **Ollama** (simplest): Download from [ollama.ai](https://ollama.ai) — works for Mistral, Llama, and other models
+Reference benchmark: [abovespec/local-llm-benchmarks](https://github.com/abovespec/local-llm-benchmarks/blob/master/REPLICATE-ik-llama-IQ3_K_R4-16GB.md)
+
+Once running, `setup.sh` will auto-detect it at `http://127.0.0.1:18473/v1`.
+
+#### Other options (easier but lower quality)
+
+- **Ollama** (simplest): Download from [ollama.ai](https://ollama.ai) — works for Mistral 7B, Llama, and other models. Update `config/mux.yaml` to point at your Ollama instance.
 - **LM Studio** (GUI-friendly): Download from [lmstudio.ai](https://lmstudio.ai) — visually manage models, same OpenAI API
-- **Qwen 35B** (high performance): More complex setup for better quality. See [docs/qwen-35b-setup.md](docs/qwen-35b-setup.md)
 - **vLLM** or **Text Generation WebUI**: Advanced setups for production use
+
+All require a server exposing an OpenAI-compatible `/v1/chat/completions` endpoint.
 
 The key requirement: your local model server must expose an **OpenAI-compatible `/v1/chat/completions` endpoint**. Almost all modern local model servers support this.
 
